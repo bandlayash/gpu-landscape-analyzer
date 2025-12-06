@@ -19,10 +19,10 @@ except sqlite3.OperationalError:
 
 
 def clean_gpu_name(scraped_name):
-    # 1. Remove "Specs" from the end
+    # Remove "Specs" from the end
     name = scraped_name.replace(" Specs", "").strip()
     
-    # 2. List of vendors to remove from the start
+    # List of vendors to remove from the start
     vendors = ["NVIDIA ", "AMD ", "Intel ", "ATI "]
     
     for vendor in vendors:

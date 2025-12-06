@@ -4,14 +4,16 @@ import time
 import random
 import sqlite3
 
-# --- DATABASE SETUP ---
+# Webdriver
+driver = webdriver.Chrome()
+
+# Database config
 db_path = "gpus.db"
 table_name = "gpus"
-
 conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
 
-# 1. Add new columns if they don't exist
+# Add new columns if they don't exist
 new_columns = ["tdp", "base_clock", "driver_support"]
 for col in new_columns:
     try:
@@ -21,8 +23,13 @@ for col in new_columns:
         print(f"Column '{col}' already exists.")
 conn.commit()
 
-# --- HELPER FUNCTION ---
+
 def clean_gpu_name(scraped_name):
+    """
+    Removing Vendor from GPU Name
+    
+    :param scraped_name: GPU name that was scraped from website
+    """
     name = scraped_name.replace(" Specs", "").strip()
     vendors = ["NVIDIA ", "AMD ", "Intel ", "ATI "]
     for vendor in vendors:
@@ -31,8 +38,6 @@ def clean_gpu_name(scraped_name):
             break
     return name.strip()
 
-# --- SELENIUM SETUP ---
-driver = webdriver.Chrome()
 driver.get("https://www.techpowerup.com/gpu-specs/")
 links = []
 
@@ -51,13 +56,12 @@ for row in rows:
 links = list(set(links))
 print(f"Found {len(links)} links. Starting scrape...")
 
-# --- SCRAPING & UPDATING ---
 for index, link in enumerate(links):
     try:
         driver.get(link)
         time.sleep(random.uniform(10, 15))
 
-        # 1. Scrape New Fields
+
         tdp = "N/A"
         base_clock = "N/A"
         driver_support = "N/A"
@@ -83,14 +87,14 @@ for index, link in enumerate(links):
         except:
             pass
 
-        # 2. Get Name for Matching
+        # Get Name for Matching
         full_title = driver.title.split('|')[0].strip()
         db_name = clean_gpu_name(full_title)
 
         print(f"[{index + 1}/{len(links)}] {db_name}")
         print(f"   -> TDP: {tdp} | Clock: {base_clock} | Support: {driver_support}")
 
-        # 3. Update Database
+        # Update Database
         cursor.execute(f"""
             UPDATE {table_name} 
             SET tdp = ?, base_clock = ?, driver_support = ?

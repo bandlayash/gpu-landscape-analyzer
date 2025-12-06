@@ -5,73 +5,80 @@ import re
 from statistics import mean
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+
+# Webdriver
 driver = webdriver.Chrome() 
 
-# --- CONFIGURATION ---
+# Database config
 DB_PATH = "gpus.db"
 TABLE_NAME = "gpus"
-
-# --- DATABASE SETUP ---
 conn = sqlite3.connect(DB_PATH)
 cursor = conn.cursor()
 
-# 1. Add Column (Safe Mode)
+# Add Column
 try:
     cursor.execute(f"ALTER TABLE {TABLE_NAME} ADD COLUMN amazon_new_avg REAL")
     print(f"Column 'amazon_new_avg' added.")
 except sqlite3.OperationalError:
     pass # Column already exists, proceed.
 
-# 2. RESET PRICES TO NULL
+# Reset prices to NULL
 print("Resetting Amazon prices to NULL...")
 cursor.execute(f"UPDATE {TABLE_NAME} SET amazon_new_avg = NULL")
 conn.commit()
 
-# --- FUNCTIONS ---
+# convert price to float
 
 def get_price_float(price_str):
+    """
+    Converts price to float ($19.99 --> 19.99)
+    
+    :param price_str: Price string ("$19.99")
+    """
     try:
         clean_str = re.sub(r'[^\d.]', '', price_str)
         return float(clean_str)
     except ValueError:
         return None
 
-def scrape_amazon_avg(driver, search_term):
+def scrape_amazon_avg(driver, gpu_name):
+    """
+    Gets top 5 results for the GPU (default sort) and finds the mean of their prices
+    
+    :param driver: Chrome webdriver
+    :param gpu_name: GPU name
+    """
     try:
-        query = f"{search_term} graphics card"
+        query = f"{gpu_name} graphics card"
         encoded_query = query.replace(" ", "+")
         url = f"https://www.amazon.com/s?k={encoded_query}"
         
         
         driver.get(url)
-        time.sleep(random.uniform(10, 15))
-        
-        if "api-services-support@amazon.com" in driver.page_source:
-            print("  Amazon CAPTCHA detected! Skipping...")
-            return None # Return None instead of 0.0 so we don't save bad data
+        time.sleep(random.uniform(10, 15)) # To not seem suspicious
 
         prices = []
         
-        # FIX: Find the RESULT ITEM containers first, not just prices
-        # This allows us to check if the text says "Renewed"
+        
         items = driver.find_elements(By.CSS_SELECTOR, "div.s-result-item[data-component-type='s-search-result']")
         
         for item in items:
-            # Check for text inside the item (Title usually)
+
             full_text = item.text.lower()
             
-            # FILTER: Skip Refurbished/Renewed stuff
+            # Skip Refurbished/Renewed stuff
             if "renewed" in full_text or "refurbished" in full_text:
                 continue
 
+            # Skip sponsored stuff
             if "sponsored" in full_text:
                 continue
 
-            search_words = search_term.lower().split()
+            search_words = gpu_name.lower().split()
             if not all(word in full_text for word in search_words if word not in ["geforce", "radeon", "nvidia", "amd"]):
                  continue
             
-            # If it's clean, try to find the price inside THIS item
+            # Get price
             try:
                 price_element = item.find_element(By.CSS_SELECTOR, ".a-price .a-offscreen")
                 price_text = price_element.get_attribute("textContent")
@@ -91,9 +98,10 @@ def scrape_amazon_avg(driver, search_term):
         print(f"  Error scraping Amazon: {e}")
         return None
 
-# --- MAIN LOOP ---
 
-# Select all GPUs (Because we just set them all to NULL)
+# Main
+
+# Select all GPUs
 cursor.execute(f"SELECT name FROM {TABLE_NAME}")
 rows = cursor.fetchall()
 gpu_names = [r[0] for r in rows]
@@ -112,7 +120,7 @@ for i, name in enumerate(gpu_names):
         cursor.execute(f"UPDATE {TABLE_NAME} SET amazon_new_avg = ? WHERE name = ?", (amazon_price, name))
         conn.commit()
     else:
-        print(f"  -> No valid prices found (or CAPTCHA). Keeping as NULL.")
+        print(f"  -> No valid prices found. Keeping as NULL.")
     
     # Sleep
     sleep_time = random.uniform(10, 15)
